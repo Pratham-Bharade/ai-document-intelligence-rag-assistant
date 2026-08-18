@@ -1,0 +1,136 @@
+# =============================================================================
+# AI Document Intelligence & RAG Assistant — Backend Dependencies
+# =============================================================================
+# Install with: pip install -r requirements.txt
+# IMPORTANT: Always activate your virtual environment first!
+#   Windows: venv\Scripts\activate
+#   macOS/Linux: source venv/bin/activate
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# WEB FRAMEWORK
+# FastAPI: Modern async Python web framework. Auto-generates API docs.
+# Uvicorn: ASGI server that runs FastAPI. Like Apache/Nginx but for async Python.
+# python-multipart: Required for file upload support in FastAPI.
+# -----------------------------------------------------------------------------
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+python-multipart==0.0.12
+
+# -----------------------------------------------------------------------------
+# DATA VALIDATION
+# Pydantic: Data validation using Python type hints. FastAPI uses it natively.
+# pydantic-settings: Load and validate settings from .env files.
+# -----------------------------------------------------------------------------
+pydantic==2.10.3
+pydantic-settings==2.6.1
+
+# -----------------------------------------------------------------------------
+# DATABASE
+# SQLAlchemy: Python ORM. Maps Python classes to database tables.
+# alembic: Database migration tool. Evolves your schema safely over time.
+# asyncpg: Async PostgreSQL driver (used with async SQLAlchemy).
+# psycopg2-binary: Sync PostgreSQL driver (fallback/admin use).
+# pgvector: Python client for pgvector extension (vector column support).
+# -----------------------------------------------------------------------------
+sqlalchemy==2.0.36
+alembic==1.14.0
+asyncpg==0.30.0
+psycopg2-binary==2.9.10
+pgvector==0.3.6
+
+# -----------------------------------------------------------------------------
+# AUTHENTICATION & SECURITY
+# python-jose: JWT token creation and verification.
+# passlib: Password hashing library (bcrypt support).
+# bcrypt: bcrypt hashing algorithm (used by passlib).
+# -----------------------------------------------------------------------------
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.2.1
+
+# -----------------------------------------------------------------------------
+# ENVIRONMENT VARIABLES
+# python-dotenv: Load .env file into os.environ automatically.
+# -----------------------------------------------------------------------------
+python-dotenv==1.0.1
+
+# -----------------------------------------------------------------------------
+# PDF PROCESSING
+# PyMuPDF (fitz): Best Python PDF library. Fast, accurate, page-aware.
+# pypdf: Alternative/fallback PDF reader.
+# pytesseract: Python wrapper for Tesseract OCR engine (scanned PDFs).
+# Pillow: Image processing library (required by pytesseract).
+# -----------------------------------------------------------------------------
+PyMuPDF==1.24.14
+pypdf==5.1.0
+pytesseract==0.3.13
+Pillow==11.0.0
+
+# -----------------------------------------------------------------------------
+# AI / EMBEDDINGS
+# sentence-transformers: Local embedding models (free, no API needed).
+#   Uses models like all-MiniLM-L6-v2 to convert text → vectors.
+# torch: PyTorch, required by sentence-transformers.
+# transformers: Hugging Face transformers library.
+# -----------------------------------------------------------------------------
+sentence-transformers==3.3.1
+torch==2.5.1
+transformers==4.47.1
+
+# -----------------------------------------------------------------------------
+# LLM / AI API
+# openai: OpenAI Python SDK. Also works with Groq (OpenAI-compatible API).
+# tiktoken: OpenAI's tokenizer. Used to count tokens before sending to LLM.
+# -----------------------------------------------------------------------------
+openai==1.57.2
+tiktoken==0.8.0
+
+# -----------------------------------------------------------------------------
+# LANGCHAIN (SELECTIVE — only where it genuinely adds value)
+# We use LangChain only for specific utilities, not as a black box.
+# langchain-text-splitters: Good text splitting utilities we'll understand.
+# -----------------------------------------------------------------------------
+langchain-text-splitters==0.3.3
+
+# -----------------------------------------------------------------------------
+# VECTOR SEARCH (LEARNING PHASE)
+# faiss-cpu: Facebook AI Similarity Search. Used in Phase 7 Stage 1
+#            to understand vector search fundamentals before pgvector.
+# numpy: Numerical computation. Used for vector math and FAISS.
+# -----------------------------------------------------------------------------
+faiss-cpu==1.9.0.post1
+numpy==1.26.4
+
+# -----------------------------------------------------------------------------
+# HTTP CLIENT
+# httpx: Modern async HTTP client. Used for external API calls.
+# -----------------------------------------------------------------------------
+httpx==0.28.1
+
+# -----------------------------------------------------------------------------
+# UTILITIES
+# python-magic: Detect file MIME types (is this really a PDF?).
+# aiofiles: Async file I/O (non-blocking file operations).
+# -----------------------------------------------------------------------------
+python-magic-bin==0.4.14; sys_platform == "win32"
+python-magic==0.4.27; sys_platform != "win32"
+aiofiles==24.1.0
+
+# -----------------------------------------------------------------------------
+# TESTING
+# pytest: Python test framework.
+# pytest-asyncio: Async test support for FastAPI.
+# httpx: Also used as test client for FastAPI endpoints.
+# -----------------------------------------------------------------------------
+pytest==8.3.4
+pytest-asyncio==0.24.0
+
+# -----------------------------------------------------------------------------
+# CODE QUALITY (development only)
+# These are not needed in production but help write better code.
+# -----------------------------------------------------------------------------
+black==24.10.0
+isort==5.13.2
+flake8==7.1.1
+mypy==1.13.0
