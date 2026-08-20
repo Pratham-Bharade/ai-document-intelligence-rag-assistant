@@ -17,9 +17,10 @@ import uuid
 from typing import Any, Dict, Generator, List, Optional
 
 from app.rag.embeddings import DocumentEmbedder
-from app.rag.llm import LLMService, format_rag_prompt
+from app.rag.llm import LLMService
 from app.rag.loader import extract_text_from_pdf, validate_pdf
 from app.rag.preprocessing import preprocess_document
+from app.rag.prompts import PromptMode, build_rag_messages
 from app.rag.retriever import AdvancedRetriever
 from app.rag.splitter import chunk_document
 from app.rag.vector_store import InMemoryVectorStore
@@ -126,12 +127,15 @@ class RAGPipeline:
         top_k: int = 4,
         score_threshold: float = 0.0,
         metadata_filter: Optional[Dict[str, Any]] = None,
-        hybrid: bool = False
+        hybrid: bool = False,
+        mode: PromptMode = PromptMode.QA,
+        few_shot: bool = False,
+        custom_instructions: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Executes the full RAG query lifecycle:
           1. Retrieve Top-K relevant chunks (with metadata filter / hybrid search)
-          2. Format grounded prompt with source citations
+          2. Format grounded prompt with source citations and selected PromptMode
           3. Generate answer using LLM (Groq with OpenAI fallback)
           4. Format response with verified source citations
         """
@@ -147,8 +151,14 @@ class RAGPipeline:
             hybrid=hybrid
         )
 
-        # Step 2: Prompt Formatting
-        messages = format_rag_prompt(query=question, context_chunks=retrieved_chunks)
+        # Step 2: Prompt Formatting with selected mode and few-shot grounding
+        messages = build_rag_messages(
+            query=question,
+            context_chunks=retrieved_chunks,
+            mode=mode,
+            few_shot=few_shot,
+            custom_instructions=custom_instructions
+        )
 
         # Step 3: LLM Generation
         llm_output = self.llm_service.generate(messages=messages)
@@ -168,7 +178,8 @@ class RAGPipeline:
             "provider": llm_output.get("provider"),
             "model": llm_output.get("model"),
             "sources": sources,
-            "total_sources": len(sources)
+            "total_sources": len(sources),
+            "mode": mode.value
         }
 
     def stream_query(
@@ -177,7 +188,10 @@ class RAGPipeline:
         top_k: int = 4,
         score_threshold: float = 0.0,
         metadata_filter: Optional[Dict[str, Any]] = None,
-        hybrid: bool = False
+        hybrid: bool = False,
+        mode: PromptMode = PromptMode.QA,
+        few_shot: bool = False,
+        custom_instructions: Optional[str] = None
     ) -> Generator[Dict[str, Any], None, None]:
         """
         Streams answers token-by-token with source attribution.
@@ -211,7 +225,13 @@ class RAGPipeline:
         yield {"type": "sources", "sources": sources}
 
         # Step 2: Prompt Formatting
-        messages = format_rag_prompt(query=question, context_chunks=retrieved_chunks)
+        messages = build_rag_messages(
+            query=question,
+            context_chunks=retrieved_chunks,
+            mode=mode,
+            few_shot=few_shot,
+            custom_instructions=custom_instructions
+        )
 
         # Step 3: Stream tokens
         for token in self.llm_service.stream_generate(messages=messages):
