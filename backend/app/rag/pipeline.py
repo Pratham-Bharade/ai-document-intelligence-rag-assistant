@@ -1,0 +1,220 @@
+"""
+File: backend/app/rag/pipeline.py
+Purpose: Complete End-to-End RAG Orchestration Pipeline.
+Why it exists: Connects all modular components built across Phases 3 through 9 into a
+               cohesive, production-ready document ingestion and Q&A engine.
+Dependencies: loader, preprocessing, splitter, embeddings, vector_store, retriever, llm
+Main responsibilities:
+  - Coordinate the entire ingestion lifecycle:
+      PDF -> Validate -> Extract -> Clean -> Chunk -> Embed -> Store
+  - Coordinate the entire query lifecycle:
+      Question -> Retrieve -> Rank -> Prompt -> LLM -> Grounded Answer + Citations
+  - Support both non-streaming and streaming generation with source attribution.
+"""
+
+import logging
+import uuid
+from typing import Any, Dict, Generator, List, Optional
+
+from app.rag.embeddings import DocumentEmbedder
+from app.rag.llm import LLMService, format_rag_prompt
+from app.rag.loader import extract_text_from_pdf, validate_pdf
+from app.rag.preprocessing import preprocess_document
+from app.rag.retriever import AdvancedRetriever
+from app.rag.splitter import chunk_document
+from app.rag.vector_store import InMemoryVectorStore
+
+logger = logging.getLogger(__name__)
+
+
+class RAGPipelineError(Exception):
+    """Custom exception for pipeline orchestration errors."""
+    pass
+
+
+class RAGPipeline:
+    """
+    End-to-End RAG Pipeline Orchestrator.
+    """
+    def __init__(
+        self,
+        embedder: Optional[DocumentEmbedder] = None,
+        vector_store: Optional[InMemoryVectorStore] = None,
+        llm_service: Optional[LLMService] = None
+    ):
+        self.embedder = embedder or DocumentEmbedder()
+        self.vector_store = vector_store or InMemoryVectorStore(expected_dim=1536)
+        self.retriever = AdvancedRetriever(
+            vector_store=self.vector_store,
+            embedder=self.embedder
+        )
+        self.llm_service = llm_service or LLMService()
+
+    def ingest_pdf(
+        self,
+        file_path: str,
+        document_id: Optional[str] = None,
+        custom_metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Executes the full ingestion pipeline on a single PDF file.
+        
+        Lifecycle:
+          1. Validate PDF file size & MIME type
+          2. Extract text and page numbers
+          3. Preprocess and normalize text
+          4. Split into recursive overlapping chunks
+          5. Generate vector embeddings in batches
+          6. Store chunks in vector database
+          
+        Returns:
+          Ingestion report dict (document_id, total_pages, total_chunks)
+        """
+        doc_id = document_id or str(uuid.uuid4())
+        meta = custom_metadata or {}
+        meta["document_id"] = doc_id
+        meta["source_path"] = file_path
+
+        logger.info(f"Starting ingestion for document {doc_id} from {file_path}...")
+
+        # Step 1: Validation
+        validate_pdf(file_path)
+
+        # Step 2: Extraction
+        extracted_data = extract_text_from_pdf(file_path)
+        extracted_data["metadata"].update(meta)
+
+        # Step 3: Preprocessing
+        cleaned_data = preprocess_document(extracted_data)
+
+        # Step 4: Chunking
+        chunks = chunk_document(cleaned_data, chunk_size=1000, chunk_overlap=200)
+        if not chunks:
+            logger.warning(f"Document {doc_id} produced 0 text chunks.")
+            return {
+                "document_id": doc_id,
+                "total_pages": cleaned_data.get("total_pages", 0),
+                "total_chunks": 0,
+                "status": "empty"
+            }
+
+        # Inject document_id into each chunk's metadata
+        for chunk in chunks:
+            chunk["metadata"]["document_id"] = doc_id
+
+        # Step 5: Embedding
+        embedded_chunks = self.embedder.embed_chunks(chunks, batch_size=100)
+
+        # Step 6: Vector Storage
+        self.vector_store.add_chunks(embedded_chunks)
+
+        logger.info(
+            f"Successfully ingested document {doc_id}: "
+            f"{cleaned_data.get('total_pages', 0)} pages, {len(chunks)} chunks."
+        )
+
+        return {
+            "document_id": doc_id,
+            "total_pages": cleaned_data.get("total_pages", 0),
+            "total_chunks": len(chunks),
+            "status": "success"
+        }
+
+    def query(
+        self,
+        question: str,
+        top_k: int = 4,
+        score_threshold: float = 0.0,
+        metadata_filter: Optional[Dict[str, Any]] = None,
+        hybrid: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Executes the full RAG query lifecycle:
+          1. Retrieve Top-K relevant chunks (with metadata filter / hybrid search)
+          2. Format grounded prompt with source citations
+          3. Generate answer using LLM (Groq with OpenAI fallback)
+          4. Format response with verified source citations
+        """
+        if not question.strip():
+            raise RAGPipelineError("Question cannot be empty.")
+
+        # Step 1: Retrieval
+        retrieved_chunks = self.retriever.retrieve(
+            query=question,
+            top_k=top_k,
+            score_threshold=score_threshold,
+            metadata_filter=metadata_filter,
+            hybrid=hybrid
+        )
+
+        # Step 2: Prompt Formatting
+        messages = format_rag_prompt(query=question, context_chunks=retrieved_chunks)
+
+        # Step 3: LLM Generation
+        llm_output = self.llm_service.generate(messages=messages)
+
+        # Step 4: Format Source Citations
+        sources = []
+        for chunk in retrieved_chunks:
+            sources.append({
+                "page_number": chunk.get("page_number"),
+                "document_id": chunk.get("metadata", {}).get("document_id"),
+                "score": chunk.get("score") or chunk.get("rrf_score"),
+                "snippet": chunk.get("text", "")[:200] + ("..." if len(chunk.get("text", "")) > 200 else "")
+            })
+
+        return {
+            "answer": llm_output.get("content", ""),
+            "provider": llm_output.get("provider"),
+            "model": llm_output.get("model"),
+            "sources": sources,
+            "total_sources": len(sources)
+        }
+
+    def stream_query(
+        self,
+        question: str,
+        top_k: int = 4,
+        score_threshold: float = 0.0,
+        metadata_filter: Optional[Dict[str, Any]] = None,
+        hybrid: bool = False
+    ) -> Generator[Dict[str, Any], None, None]:
+        """
+        Streams answers token-by-token with source attribution.
+        
+        Yields:
+          1. Initial packet with sources: {"type": "sources", "sources": [...]}
+          2. Token packets: {"type": "token", "content": "..."}
+          3. Completion packet: {"type": "done"}
+        """
+        if not question.strip():
+            raise RAGPipelineError("Question cannot be empty.")
+
+        # Step 1: Retrieval
+        retrieved_chunks = self.retriever.retrieve(
+            query=question,
+            top_k=top_k,
+            score_threshold=score_threshold,
+            metadata_filter=metadata_filter,
+            hybrid=hybrid
+        )
+
+        # Build and yield source citations first
+        sources = []
+        for chunk in retrieved_chunks:
+            sources.append({
+                "page_number": chunk.get("page_number"),
+                "document_id": chunk.get("metadata", {}).get("document_id"),
+                "score": chunk.get("score") or chunk.get("rrf_score"),
+                "snippet": chunk.get("text", "")[:200] + ("..." if len(chunk.get("text", "")) > 200 else "")
+            })
+        yield {"type": "sources", "sources": sources}
+
+        # Step 2: Prompt Formatting
+        messages = format_rag_prompt(query=question, context_chunks=retrieved_chunks)
+
+        # Step 3: Stream tokens
+        for token in self.llm_service.stream_generate(messages=messages):
+            yield {"type": "token", "content": token}
+
+        yield {"type": "done"}
