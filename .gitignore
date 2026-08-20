@@ -13,7 +13,7 @@
 .env.production
 .env.staging
 *.key
-*.pem
+*.pem   
 secrets/
 
 # -----------------------------------------------------------------------------
@@ -95,7 +95,8 @@ frontend/out/
 *.ckpt
 *.pt
 *.onnx
-models/
+/models/
+!backend/app/models/
 model_cache/
 
 # FAISS index files (can be large)
