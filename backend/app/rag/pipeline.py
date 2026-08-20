@@ -17,6 +17,7 @@ import uuid
 from typing import Any, Dict, Generator, List, Optional
 
 from app.rag.embeddings import DocumentEmbedder
+from app.rag.guardrails import SecurityGuardrails
 from app.rag.llm import LLMService
 from app.rag.loader import extract_text_from_pdf, validate_pdf
 from app.rag.preprocessing import preprocess_document
@@ -41,7 +42,8 @@ class RAGPipeline:
         self,
         embedder: Optional[DocumentEmbedder] = None,
         vector_store: Optional[InMemoryVectorStore] = None,
-        llm_service: Optional[LLMService] = None
+        llm_service: Optional[LLMService] = None,
+        guardrails: Optional[SecurityGuardrails] = None
     ):
         self.embedder = embedder or DocumentEmbedder()
         self.vector_store = vector_store or InMemoryVectorStore(expected_dim=1536)
@@ -50,6 +52,7 @@ class RAGPipeline:
             embedder=self.embedder
         )
         self.llm_service = llm_service or LLMService()
+        self.guardrails = guardrails or SecurityGuardrails()
 
     def ingest_pdf(
         self,
@@ -142,9 +145,23 @@ class RAGPipeline:
         if not question.strip():
             raise RAGPipelineError("Question cannot be empty.")
 
+        # Step 0: Input Security & PII Redaction
+        is_safe, sanitized_question, security_msg = self.guardrails.validate_input(question)
+        if not is_safe:
+            logger.warning(f"Query blocked by guardrails: {security_msg}")
+            return {
+                "answer": f"I cannot process this request: {security_msg}",
+                "provider": "guardrails",
+                "model": "security-filter",
+                "sources": [],
+                "total_sources": 0,
+                "mode": mode.value,
+                "guardrails": {"is_grounded": True, "faithfulness_score": 1.0, "blocked": True}
+            }
+
         # Step 1: Retrieval
         retrieved_chunks = self.retriever.retrieve(
-            query=question,
+            query=sanitized_question,
             top_k=top_k,
             score_threshold=score_threshold,
             metadata_filter=metadata_filter,
@@ -153,7 +170,7 @@ class RAGPipeline:
 
         # Step 2: Prompt Formatting with selected mode and few-shot grounding
         messages = build_rag_messages(
-            query=question,
+            query=sanitized_question,
             context_chunks=retrieved_chunks,
             mode=mode,
             few_shot=few_shot,
@@ -162,8 +179,12 @@ class RAGPipeline:
 
         # Step 3: LLM Generation
         llm_output = self.llm_service.generate(messages=messages)
+        generated_answer = llm_output.get("content", "")
 
-        # Step 4: Format Source Citations
+        # Step 4: Output Guardrails & Faithfulness Scoring
+        guardrails_report = self.guardrails.verify_output(generated_answer, retrieved_chunks)
+
+        # Step 5: Format Source Citations
         sources = []
         for chunk in retrieved_chunks:
             sources.append({
@@ -174,12 +195,13 @@ class RAGPipeline:
             })
 
         return {
-            "answer": llm_output.get("content", ""),
+            "answer": generated_answer,
             "provider": llm_output.get("provider"),
             "model": llm_output.get("model"),
             "sources": sources,
             "total_sources": len(sources),
-            "mode": mode.value
+            "mode": mode.value,
+            "guardrails": guardrails_report
         }
 
     def stream_query(
