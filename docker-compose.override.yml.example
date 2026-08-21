@@ -1,0 +1,19 @@
+# docker-compose.override.yml.example
+# Copy this file to docker-compose.override.yml for local development mounts and hot-reloading.
+# (docker-compose.override.yml is gitignored so your local dev tweaks won't affect git)
+
+version: "3.9"
+
+services:
+  backend:
+    # Mount backend code into container for live hot-reload
+    volumes:
+      - ./backend/app:/app/app:ro
+      - document_uploads:/app/uploads
+    # Run uvicorn with --reload
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  frontend:
+    # If running Vite dev server locally on port 5173, you can comment out or expose frontend:3000
+    ports:
+      - "3000:80"
