@@ -11,6 +11,7 @@ from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.telemetry import DOCUMENT_PAGES_TOTAL, DOCUMENTS_INGESTED_TOTAL
 from app.models.document import Document, DocumentChunk
 from app.rag.pipeline import RAGPipeline
 
@@ -76,6 +77,8 @@ def process_document_ingestion(
 
         doc.total_pages = report.get("total_pages", 0)
         doc.status = "processed"
+        DOCUMENTS_INGESTED_TOTAL.labels(status="success").inc()
+        DOCUMENT_PAGES_TOTAL.inc(doc.total_pages)
 
         # Also mirror chunk records into DB
         for c in pipeline.vector_store.chunks:
@@ -95,6 +98,7 @@ def process_document_ingestion(
 
     except Exception as e:
         doc.status = "failed"
+        DOCUMENTS_INGESTED_TOTAL.labels(status="failed").inc()
         db.commit()
         raise DocumentServiceError(f"Document processing failed: {e}")
 

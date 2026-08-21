@@ -13,9 +13,16 @@ Main responsibilities:
 """
 
 import logging
+import time
 import uuid
 from typing import Any, Dict, Generator, List, Optional
 
+from app.core.telemetry import (
+    FAITHFULNESS_SCORES,
+    RAG_QUERIES_TOTAL,
+    RAG_QUERY_LATENCY,
+    SECURITY_ATTACKS_BLOCKED_TOTAL
+)
 from app.rag.embeddings import DocumentEmbedder
 from app.rag.guardrails import SecurityGuardrails
 from app.rag.llm import LLMService
@@ -142,13 +149,17 @@ class RAGPipeline:
           3. Generate answer using LLM (Groq with OpenAI fallback)
           4. Format response with verified source citations
         """
+        start_t = time.perf_counter()
         if not question.strip():
+            RAG_QUERIES_TOTAL.labels(provider="none", mode=mode.value, status="error").inc()
             raise RAGPipelineError("Question cannot be empty.")
 
         # Step 0: Input Security & PII Redaction
         is_safe, sanitized_question, security_msg = self.guardrails.validate_input(question)
         if not is_safe:
             logger.warning(f"Query blocked by guardrails: {security_msg}")
+            SECURITY_ATTACKS_BLOCKED_TOTAL.labels(attack_type="prompt_injection").inc()
+            RAG_QUERIES_TOTAL.labels(provider="guardrails", mode=mode.value, status="blocked").inc()
             return {
                 "answer": f"I cannot process this request: {security_msg}",
                 "provider": "guardrails",
@@ -183,6 +194,8 @@ class RAGPipeline:
 
         # Step 4: Output Guardrails & Faithfulness Scoring
         guardrails_report = self.guardrails.verify_output(generated_answer, retrieved_chunks)
+        faith_score = guardrails_report.get("faithfulness_score", 0.0)
+        FAITHFULNESS_SCORES.observe(faith_score)
 
         # Step 5: Format Source Citations
         sources = []
@@ -193,6 +206,14 @@ class RAGPipeline:
                 "score": chunk.get("score") or chunk.get("rrf_score"),
                 "snippet": chunk.get("text", "")[:200] + ("..." if len(chunk.get("text", "")) > 200 else "")
             })
+
+        duration = time.perf_counter() - start_t
+        RAG_QUERY_LATENCY.labels(mode=mode.value).observe(duration)
+        RAG_QUERIES_TOTAL.labels(
+            provider=llm_output.get("provider", "unknown"),
+            mode=mode.value,
+            status="success"
+        ).inc()
 
         return {
             "answer": generated_answer,
