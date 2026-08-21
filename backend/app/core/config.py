@@ -104,6 +104,27 @@ class Settings(BaseSettings):
         return self.max_file_size_mb * 1024 * 1024
 
     @property
+    def DATABASE_URL(self) -> str:
+        # Default to local SQLite if postgresql is not running
+        return self.database_url if self.database_url and not self.database_url.startswith("postgresql+asyncpg") else "sqlite:///./rag_assistant.db"
+
+    @property
+    def JWT_SECRET(self) -> str:
+        return self.jwt_secret
+
+    @property
+    def JWT_ALGORITHM(self) -> str:
+        return self.jwt_algorithm
+
+    @property
+    def ACCESS_TOKEN_EXPIRE_MINUTES(self) -> int:
+        return self.jwt_expire_minutes
+
+    @property
+    def UPLOAD_DIR(self) -> str:
+        return self.upload_dir
+
+    @property
     def is_development(self) -> bool:
         """Check if running in development mode."""
         return self.environment == "development"
