@@ -10,6 +10,7 @@ from typing import List, Optional
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
+from app.core.cache import cache_manager
 from app.core.config import settings
 from app.core.telemetry import DOCUMENT_PAGES_TOTAL, DOCUMENTS_INGESTED_TOTAL
 from app.models.document import Document, DocumentChunk
@@ -125,6 +126,9 @@ def delete_document(db: Session, user_id: str, document_id: str) -> bool:
             os.remove(doc.file_path)
         except OSError:
             pass
+
+    # Purge any cached query responses tied to this document
+    cache_manager.invalidate_document(document_id)
 
     db.delete(doc)
     db.commit()

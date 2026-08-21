@@ -93,3 +93,18 @@ class DocumentEmbedder:
             embedded_chunks.append(chunk_copy)
             
         return embedded_chunks
+
+    def embed_query(self, query: str) -> List[float]:
+        """Generates embedding vector for a single query string."""
+        if not query.strip():
+            return [0.0] * self.expected_dimensions
+        try:
+            vector = self.embeddings_client.embed_query(query)
+            if len(vector) != self.expected_dimensions:
+                raise EmbeddingServiceError(
+                    f"Dimension mismatch: expected {self.expected_dimensions}, got {len(vector)}"
+                )
+            return vector
+        except Exception as e:
+            logger.error(f"API Error during query embedding: {e}")
+            raise EmbeddingServiceError(f"Query embedding generation failed: {str(e)}")

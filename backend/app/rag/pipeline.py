@@ -17,6 +17,7 @@ import time
 import uuid
 from typing import Any, Dict, Generator, List, Optional
 
+from app.core.cache import cache_manager
 from app.core.telemetry import (
     FAITHFULNESS_SCORES,
     RAG_QUERIES_TOTAL,
@@ -170,6 +171,21 @@ class RAGPipeline:
                 "guardrails": {"is_grounded": True, "faithfulness_score": 1.0, "blocked": True}
             }
 
+        target_doc_id = (metadata_filter or {}).get("document_id")
+
+        # Cache Check 1: Exact Query Cache
+        cached_exact = cache_manager.get_exact(sanitized_question, target_doc_id, mode.value)
+        if cached_exact:
+            return cached_exact
+
+        # Generate query embedding for retrieval & semantic cache check
+        query_vector = self.embedder.embed_query(sanitized_question)
+
+        # Cache Check 2: Semantic Similarity Query Cache
+        cached_semantic = cache_manager.get_semantic(query_vector, target_doc_id, mode.value)
+        if cached_semantic:
+            return cached_semantic
+
         # Step 1: Retrieval
         retrieved_chunks = self.retriever.retrieve(
             query=sanitized_question,
@@ -215,7 +231,7 @@ class RAGPipeline:
             status="success"
         ).inc()
 
-        return {
+        result_payload = {
             "answer": generated_answer,
             "provider": llm_output.get("provider"),
             "model": llm_output.get("model"),
@@ -224,6 +240,17 @@ class RAGPipeline:
             "mode": mode.value,
             "guardrails": guardrails_report
         }
+
+        # Store in cache for future hits
+        cache_manager.set(
+            query=sanitized_question,
+            query_vector=query_vector,
+            document_id=target_doc_id,
+            mode=mode.value,
+            response=result_payload
+        )
+
+        return result_payload
 
     def stream_query(
         self,
