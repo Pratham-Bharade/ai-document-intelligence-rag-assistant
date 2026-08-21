@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, get_db, get_rag_pipeline
 from app.models.user import User
+from app.rag.memory import ConversationMemoryManager
 from app.rag.pipeline import RAGPipeline
 from app.schemas.conversation import ConversationCreate, ConversationRead, MessageCreate, MessageRead
 from app.services.chat_service import (
@@ -20,6 +21,7 @@ from app.services.chat_service import (
 )
 
 router = APIRouter(prefix="/conversations", tags=["Conversations & Chat"])
+memory_manager = ConversationMemoryManager(max_turns=5, max_chars=2000)
 
 
 @router.post("", response_model=ConversationRead, status_code=status.HTTP_201_CREATED)
@@ -80,7 +82,19 @@ def send_chat_message(
             detail="Conversation not found."
         )
 
-    # 1. Save User Message
+    # 1. Prepare past messages dictionary
+    past_messages = [
+        {"role": m.role, "content": m.content} for m in conv.messages
+    ]
+
+    # 2. Contextualize follow-up question (resolves pronouns to standalone search query)
+    standalone_query, chat_history_text = memory_manager.prepare_contextual_query(
+        question=payload.content,
+        messages=past_messages,
+        llm_service=pipeline.llm_service
+    )
+
+    # 3. Save User Message
     add_message(
         db=db,
         conversation_id=conv.id,
@@ -88,10 +102,14 @@ def send_chat_message(
         content=payload.content
     )
 
-    # 2. Run RAG Pipeline
-    rag_result = pipeline.query(question=payload.content)
+    # 4. Run RAG Pipeline with standalone query
+    custom_inst = f"Recent Dialogue History:\n{chat_history_text}" if chat_history_text else None
+    rag_result = pipeline.query(
+        question=standalone_query,
+        custom_instructions=custom_inst
+    )
 
-    # 3. Save Assistant Message with sources
+    # 5. Save Assistant Message with sources
     assistant_msg = add_message(
         db=db,
         conversation_id=conv.id,
