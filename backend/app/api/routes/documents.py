@@ -1,16 +1,17 @@
 """
 File: backend/app/api/routes/documents.py
-Purpose: Document Management API Endpoints (Upload, Ingest, List, Get, Delete).
+Purpose: Document Management API Endpoints (Upload, Async Ingestion, Task Status, List, Get, Delete).
 """
 
 import os
 import uuid
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, get_db, get_rag_pipeline
 from app.core.config import settings
+from app.db.session import SessionLocal
 from app.models.user import User
 from app.rag.pipeline import RAGPipeline
 from app.schemas.document import DocumentDetailRead, DocumentRead
@@ -23,6 +24,8 @@ from app.services.document_service import (
     process_document_ingestion,
     save_upload_file
 )
+from app.workers.task_queue import task_queue
+from app.workers.tasks import background_ingest_document
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
@@ -36,9 +39,8 @@ async def upload_document(
     pipeline: RAGPipeline = Depends(get_rag_pipeline)
 ) -> Any:
     """
-    Uploads a PDF document, streams it to disk, and runs RAG ingestion.
+    Synchronously uploads a PDF document, streams it to disk, and runs RAG ingestion.
     """
-    # 1. Validation check on filename / extension
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -51,10 +53,8 @@ async def upload_document(
     dest_path = os.path.join(upload_dir, unique_filename)
 
     try:
-        # 2. Save file stream to disk
         file_size = save_upload_file(file, dest_path)
 
-        # 3. Create initial database record
         doc = create_document_record(
             db=db,
             user_id=current_user.id,
@@ -65,7 +65,6 @@ async def upload_document(
             mime_type=file.content_type or "application/pdf"
         )
 
-        # 4. Run RAG ingestion (Chunking, Embedding, Vector indexing)
         doc = process_document_ingestion(db, pipeline, doc.id)
         return doc
 
@@ -74,11 +73,73 @@ async def upload_document(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
-    except Exception as e:
+
+
+@router.post("/upload/async", status_code=status.HTTP_202_ACCEPTED)
+async def upload_document_async(
+    file: UploadFile = File(...),
+    title: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    pipeline: RAGPipeline = Depends(get_rag_pipeline)
+) -> Dict[str, Any]:
+    """
+    Asynchronously uploads a PDF document, saves it to disk, and dispatches
+    the heavy OCR and embedding ingestion task to the background task queue.
+    Returns HTTP 202 Accepted with a task_id for progress polling.
+    """
+    if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An unexpected error occurred during ingestion: {str(e)}"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only PDF files are currently supported."
         )
+
+    doc_title = title or file.filename.rsplit(".", 1)[0]
+    unique_filename = f"{uuid.uuid4()}_{file.filename}"
+    upload_dir = os.path.join(settings.UPLOAD_DIR, current_user.id)
+    dest_path = os.path.join(upload_dir, unique_filename)
+
+    file_size = save_upload_file(file, dest_path)
+
+    doc = create_document_record(
+        db=db,
+        user_id=current_user.id,
+        title=doc_title,
+        filename=file.filename,
+        file_path=dest_path,
+        file_size=file_size,
+        mime_type=file.content_type or "application/pdf"
+    )
+
+    # Dispatch to background task queue
+    task_id = task_queue.dispatch_async(
+        background_ingest_document,
+        db_session_factory=SessionLocal,
+        pipeline=pipeline,
+        document_id=doc.id
+    )
+
+    return {
+        "task_id": task_id,
+        "document_id": doc.id,
+        "status": "queued",
+        "message": "Document accepted for asynchronous background processing."
+    }
+
+
+@router.get("/tasks/{task_id}", response_model=Dict[str, Any])
+def get_task_status(
+    task_id: str,
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    """Retrieve the real-time progress and status of a background ingestion task."""
+    task = task_queue.get_task(task_id)
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Task {task_id} not found."
+        )
+    return task
 
 
 @router.get("", response_model=List[DocumentRead])
