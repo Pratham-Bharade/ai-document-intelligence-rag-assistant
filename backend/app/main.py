@@ -37,7 +37,7 @@ app = FastAPI(
         "Production-oriented Retrieval-Augmented Generation system. "
         "Upload documents, ask questions, get grounded AI answers with citations."
     ),
-    version="0.1.0",
+    version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan
