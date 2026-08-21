@@ -1,6 +1,6 @@
 """
 File: backend/app/main.py
-Purpose: FastAPI Application Entry Point and Router Registration.
+Purpose: FastAPI Application Entry Point, Security Middleware, and Router Registration.
 """
 
 import logging
@@ -8,8 +8,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, documents, rag, conversations
+from app.api.routes import admin, auth, conversations, documents, rag
 from app.core.config import settings
+from app.core.middleware import (
+    AuditLoggingMiddleware,
+    RateLimiterMiddleware,
+    SecurityHeadersMiddleware
+)
 from app.db.base import Base
 from app.db.session import engine
 
@@ -37,7 +42,12 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS Configuration
+# 1. Register Custom Security & Audit Middleware (order: executed outer to inner)
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(AuditLoggingMiddleware)
+app.add_middleware(RateLimiterMiddleware, max_requests=120, window_seconds=60)
+
+# 2. CORS Configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://localhost:3000", "*"],
@@ -46,11 +56,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include API Routers
+# 3. Include API Routers
 app.include_router(auth.router, prefix="/api")
 app.include_router(documents.router, prefix="/api")
 app.include_router(rag.router, prefix="/api")
 app.include_router(conversations.router, prefix="/api")
+app.include_router(admin.router, prefix="/api")
 
 
 @app.get("/health", tags=["System"])

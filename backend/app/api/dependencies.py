@@ -64,3 +64,18 @@ def get_current_user(
             detail="Inactive user account"
         )
     return user
+
+
+def get_current_active_superuser(
+    current_user: User = Depends(get_current_user)
+) -> User:
+    """
+    RBAC dependency requiring the user to have superuser/admin privileges.
+    Raises HTTP 403 Forbidden if user is not a superuser.
+    """
+    if not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The user does not have adequate administrative privileges."
+        )
+    return current_user
