@@ -100,3 +100,29 @@ def login_json(
 def read_current_user(current_user: User = Depends(get_current_user)) -> Any:
     """Get profile information for currently authenticated user."""
     return current_user
+
+
+@router.post("/reset-password")
+def reset_password(
+    data: UserLogin,
+    db: Session = Depends(get_db)
+) -> Any:
+    """Resets password for an existing user account."""
+    user = db.query(User).filter(User.email == data.email.lower()).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No registered user found with this email address."
+        )
+    if len(data.password) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be at least 6 characters long."
+        )
+    
+    from app.services.auth_service import get_password_hash
+    user.hashed_password = get_password_hash(data.password)
+    db.commit()
+    db.refresh(user)
+    return {"message": "Password has been successfully updated. You can now log in with your new password."}
+

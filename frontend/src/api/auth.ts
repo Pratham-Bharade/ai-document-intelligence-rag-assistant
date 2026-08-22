@@ -16,4 +16,9 @@ export const authApi = {
     const res = await apiClient.get<User>('/auth/me');
     return res.data;
   },
+
+  resetPassword: async (email: string, password: string): Promise<{ message: string }> => {
+    const res = await apiClient.post<{ message: string }>('/auth/reset-password', { email, password });
+    return res.data;
+  },
 };

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { SourceCitation } from '../types';
-import { BookOpen, ChevronDown, ChevronUp, FileText } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface SourceCitationPillProps {
   citation: SourceCitation;
@@ -14,29 +14,35 @@ export const SourceCitationPill: React.FC<SourceCitationPillProps> = ({ citation
     <div className="inline-block mr-2 mb-2">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="inline-flex items-center space-x-1.5 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-brand-300 hover:text-brand-200 border border-slate-700 hover:border-brand-500/50 rounded-lg text-xs transition-colors shadow-sm"
+        className={`inline-flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-medium transition shadow-sm border ${
+          isOpen
+            ? 'bg-brand-600/20 text-brand-200 border-brand-500/50'
+            : 'bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white border-slate-800 hover:border-slate-700'
+        }`}
       >
-        <BookOpen className="h-3.5 w-3.5 text-brand-400" />
-        <span>Source {index + 1}</span>
-        {citation.page_number && (
-          <span className="text-slate-400">· Page {citation.page_number}</span>
-        )}
-        {citation.score !== undefined && (
-          <span className="text-emerald-400 font-mono">({Math.round(citation.score * 100)}%)</span>
-        )}
-        {isOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+        <span className="font-semibold text-brand-300">
+          {citation.page_number ? `Page ${citation.page_number}` : `Source ${index + 1}`}
+        </span>
+        <span className="text-slate-500">|</span>
+        <span className="text-[11px] text-slate-400">Click to verify</span>
+        {isOpen ? <ChevronUp className="h-3 w-3 text-slate-400" /> : <ChevronDown className="h-3 w-3 text-slate-400" />}
       </button>
 
       {isOpen && (
-        <div className="mt-2 p-3 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-300 shadow-xl max-w-lg animate-in fade-in zoom-in-95 duration-150">
-          <div className="flex items-center justify-between text-slate-400 mb-1.5 pb-1.5 border-b border-slate-800">
-            <span className="flex items-center space-x-1 font-medium text-slate-200">
-              <FileText className="h-3.5 w-3.5 text-brand-400 mr-1" />
-              Verified Excerpt
+        <div className="mt-2.5 p-3.5 bg-slate-950 border border-brand-500/30 rounded-2xl text-xs text-slate-200 shadow-2xl max-w-xl animate-in fade-in zoom-in-95 duration-150">
+          <div className="flex items-center justify-between text-slate-400 mb-2 pb-2 border-b border-slate-800">
+            <span className="flex items-center space-x-1.5 font-semibold text-brand-300">
+              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+              <span>Verified Document Grounding Excerpt</span>
             </span>
-            {citation.page_number && <span>Page {citation.page_number}</span>}
+            {citation.page_number && (
+              <span className="px-2 py-0.5 rounded-md bg-brand-500/10 text-brand-300 font-bold border border-brand-500/20 text-[11px]">
+                Exact Page: {citation.page_number}
+              </span>
+            )}
           </div>
-          <p className="whitespace-pre-wrap leading-relaxed text-slate-300 font-mono text-[11px] bg-slate-950 p-2.5 rounded-lg border border-slate-800/80 max-h-40 overflow-y-auto">
+          <p className="whitespace-pre-wrap leading-relaxed text-slate-300 font-sans text-xs bg-slate-900/90 p-3 rounded-xl border border-slate-800 max-h-48 overflow-y-auto">
             {citation.snippet}
           </p>
         </div>
