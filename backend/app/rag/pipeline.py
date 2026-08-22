@@ -141,7 +141,8 @@ class RAGPipeline:
         hybrid: bool = False,
         mode: PromptMode = PromptMode.QA,
         few_shot: bool = False,
-        custom_instructions: Optional[str] = None
+        custom_instructions: Optional[str] = None,
+        document_metadata: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Executes the full RAG query lifecycle:
@@ -201,7 +202,8 @@ class RAGPipeline:
             context_chunks=retrieved_chunks,
             mode=mode,
             few_shot=few_shot,
-            custom_instructions=custom_instructions
+            custom_instructions=custom_instructions,
+            document_metadata=document_metadata
         )
 
         # Step 3: LLM Generation
@@ -261,7 +263,8 @@ class RAGPipeline:
         hybrid: bool = False,
         mode: PromptMode = PromptMode.QA,
         few_shot: bool = False,
-        custom_instructions: Optional[str] = None
+        custom_instructions: Optional[str] = None,
+        document_metadata: Optional[str] = None
     ) -> Generator[Dict[str, Any], None, None]:
         """
         Streams answers token-by-token with source attribution.
@@ -300,7 +303,8 @@ class RAGPipeline:
             context_chunks=retrieved_chunks,
             mode=mode,
             few_shot=few_shot,
-            custom_instructions=custom_instructions
+            custom_instructions=custom_instructions,
+            document_metadata=document_metadata
         )
 
         # Step 3: Stream tokens

@@ -19,14 +19,15 @@ class PromptMode(str, Enum):
 # ---------------------------------------------------------------------------
 
 QA_SYSTEM_PROMPT = """You are an accurate, enterprise-grade AI Document Intelligence Assistant.
-Your mission is to directly answer the user's question with precise synthesis and clarity based strictly on the provided document excerpts.
+Your mission is to directly answer the user's question with precise synthesis and clarity based strictly on the provided document excerpts and metadata.
 
 CRITICAL OPERATING RULES:
 1. DIRECT SYNTHESIS & ANSWERS: Provide a direct, concise, and structured answer to the user's question first. Do NOT repeat, copy, or echo raw excerpts back to the user. Synthesize the facts into natural, fluent sentences or clear bullet points.
-2. STRICT GROUNDING: Answer based ONLY on facts directly mentioned in <CONTEXT>. Never introduce outside assumptions or unverified claims.
-3. INSUFFICIENT CONTEXT: If the excerpts do not contain the answer, state clearly: "Based on the provided documents, I do not have enough information to answer this question." Do not guess.
-4. MANDATORY CITATIONS: Attribute factual statements with page citations (e.g. "[Page 3]").
-5. CONCISE & ACTIONABLE: Deliver direct answers immediately without conversational fluff."""
+2. DOCUMENT METRICS & PAGE COUNT: If the user asks about page count, document title, or metadata, answer directly using the verified <DOCUMENT_METRICS> section.
+3. STRICT GROUNDING: Answer based ONLY on facts directly mentioned in <CONTEXT> and <DOCUMENT_METRICS>. Never introduce outside assumptions or unverified claims.
+4. INSUFFICIENT CONTEXT: If the excerpts and metadata do not contain the answer, state clearly: "Based on the provided documents, I do not have enough information to answer this question." Do not guess.
+5. MANDATORY CITATIONS: Attribute factual statements with page citations (e.g. "[Page 3]").
+6. CONCISE & ACTIONABLE: Deliver direct answers immediately without conversational fluff."""
 
 
 SUMMARY_SYSTEM_PROMPT = """You are an expert Document Summarization Assistant.
@@ -102,7 +103,8 @@ def build_rag_messages(
     context_chunks: List[Dict[str, Any]],
     mode: PromptMode = PromptMode.QA,
     few_shot: bool = False,
-    custom_instructions: Optional[str] = None
+    custom_instructions: Optional[str] = None,
+    document_metadata: Optional[str] = None
 ) -> List[Dict[str, str]]:
     """
     Builds the complete message payload (system + user) tailored to the specified PromptMode.
@@ -126,6 +128,11 @@ def build_rag_messages(
     # 3. Assemble User Content
     user_parts = []
     
+    if document_metadata:
+        user_parts.append(f"""<DOCUMENT_METRICS>
+{document_metadata}
+</DOCUMENT_METRICS>""")
+
     if few_shot and mode == PromptMode.QA:
         user_parts.append(FEW_SHOT_QA_EXAMPLES)
 
@@ -137,7 +144,7 @@ def build_rag_messages(
 {query}
 </USER_QUERY>
 
-Provide a direct, synthesized, and structured answer to <USER_QUERY> based strictly on <CONTEXT>. Do NOT dump raw context excerpts.""")
+Provide a direct, synthesized, and structured answer to <USER_QUERY> based strictly on <CONTEXT> and <DOCUMENT_METRICS>. Do NOT dump raw context excerpts.""")
 
     user_text = "\n\n".join(user_parts)
 
