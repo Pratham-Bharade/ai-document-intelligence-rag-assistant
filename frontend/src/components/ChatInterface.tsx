@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Message } from '../types';
 import { ragApi } from '../api/rag';
 import { SourceCitationPill } from './SourceCitationPill';
-import { Bot, Layers, Send, Sparkles, User as UserIcon } from 'lucide-react';
+import { Bot, Layers, RotateCcw, Send, Sparkles, User as UserIcon } from 'lucide-react';
 
 interface ChatInterfaceProps {
   selectedDocId: string | null;
@@ -16,6 +16,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ selectedDocId, sel
   const [mode, setMode] = useState<string>('qa');
   const [hybrid, setHybrid] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Automatically clear conversation history when switching documents
+  useEffect(() => {
+    setMessages([]);
+  }, [selectedDocId]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -145,8 +150,20 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ selectedDocId, sel
             title="Combine Dense Vectors with BM25 Lexical Keyword Search"
           >
             <Layers className="h-3.5 w-3.5" />
-            <span>Hybrid Search (RRF)</span>
+            <span>Hybrid Search</span>
           </button>
+
+          {/* Clear Chat Button */}
+          {messages.length > 0 && (
+            <button
+              onClick={() => setMessages([])}
+              className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg border border-slate-800 bg-slate-900 text-slate-400 hover:text-rose-400 hover:border-rose-500/30 transition"
+              title="Clear conversation history"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              <span>Clear</span>
+            </button>
+          )}
         </div>
       </div>
 

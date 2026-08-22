@@ -1,14 +1,6 @@
 """
 File: backend/app/rag/prompts.py
 Purpose: Modular Prompt Templates, Few-Shot Grounding, and Task Modes for Enterprise RAG.
-Why it exists: Standardizing prompt engineering prevents hallucinations, ensures precise
-               source citations, defends against prompt injections via XML delimiters,
-               and enables specialized modes (Q&A, Summarization, Structured Extraction).
-Dependencies: typing, enum
-Main responsibilities:
-  - Provide role-specific system prompts (QA, Summarization, Extraction, Comparison).
-  - Encapsulate retrieved context in secure XML boundaries.
-  - Support Few-Shot demonstrations for consistent formatting and grounding.
 """
 
 from enum import Enum
@@ -27,32 +19,34 @@ class PromptMode(str, Enum):
 # ---------------------------------------------------------------------------
 
 QA_SYSTEM_PROMPT = """You are an accurate, enterprise-grade AI Document Intelligence Assistant.
-Your mission is to answer the user's question strictly and exclusively based on the provided document excerpts.
+Your mission is to directly answer the user's question with precise synthesis and clarity based strictly on the provided document excerpts.
 
 CRITICAL OPERATING RULES:
-1. STRICT GROUNDING: Use ONLY facts directly mentioned in <CONTEXT>. Never introduce outside knowledge, assumptions, or extrapolations.
-2. INSUFFICIENT CONTEXT: If the provided excerpts do not explicitly answer the question, state: "Based on the provided documents, I do not have enough information to answer this question." Do not attempt to guess or hallucinate.
-3. MANDATORY CITATIONS: When stating facts, append the page citation at the end of the sentence (e.g. "[Page 3]" or "[Doc: handbook_2026, Page 5]").
-4. OBJECTIVITY: Maintain an objective, professional, and clear tone."""
+1. DIRECT SYNTHESIS & ANSWERS: Provide a direct, concise, and structured answer to the user's question first. Do NOT repeat, copy, or echo raw excerpts back to the user. Synthesize the facts into natural, fluent sentences or clear bullet points.
+2. STRICT GROUNDING: Answer based ONLY on facts directly mentioned in <CONTEXT>. Never introduce outside assumptions or unverified claims.
+3. INSUFFICIENT CONTEXT: If the excerpts do not contain the answer, state clearly: "Based on the provided documents, I do not have enough information to answer this question." Do not guess.
+4. MANDATORY CITATIONS: Attribute factual statements with page citations (e.g. "[Page 3]").
+5. CONCISE & ACTIONABLE: Deliver direct answers immediately without conversational fluff."""
 
 
 SUMMARY_SYSTEM_PROMPT = """You are an expert Document Summarization Assistant.
-Your mission is to generate a comprehensive, structured summary of the provided document excerpts.
+Your mission is to generate a comprehensive, structured executive summary of the provided document excerpts.
 
 CRITICAL OPERATING RULES:
-1. STRUCTURE: Organize the summary with:
-   - Executive Overview (2-3 sentences)
-   - Key Highlights & Major Takeaways (bullet points)
-   - Important Dates, Deadlines, or Requirements (if present)
-2. GROUNDING: Include ONLY information present in the excerpts.
-3. CITATIONS: Include page references for key findings (e.g. "[Page 2]")."""
+1. STRUCTURED EXECUTIVE SUMMARY:
+   - **Executive Overview**: 2-3 crisp sentences summarizing the document's core purpose.
+   - **Key Takeaways & Core Policies**: Structured bullet points with specific details, numbers, and facts.
+   - **Important Dates, Deadlines & Requirements**: Key obligations or timelines (if present).
+2. SYNTHESIS: Write a clean, high-level executive summary. Do NOT dump or repeat raw excerpts.
+3. GROUNDING: Include ONLY information present in the excerpts.
+4. CITATIONS: Include page references for key findings (e.g. "[Page 2]")."""
 
 
 EXTRACTION_SYSTEM_PROMPT = """You are a high-precision Data Extraction Assistant.
-Your mission is to extract key entities, figures, dates, and terms from the provided context into valid JSON format.
+Your mission is to extract key entities, figures, dates, and terms from the provided context into clean, valid JSON format.
 
 CRITICAL OPERATING RULES:
-1. OUTPUT FORMAT: Respond ONLY with valid, parseable JSON. Do not include markdown codeblocks or conversational text.
+1. OUTPUT FORMAT: Respond ONLY with valid, parseable JSON. Do not include conversational text or markdown code blocks.
 2. GROUNDING: Extract only values explicitly stated in the context."""
 
 
@@ -143,7 +137,7 @@ def build_rag_messages(
 {query}
 </USER_QUERY>
 
-Please follow the operating rules to generate the response.""")
+Provide a direct, synthesized, and structured answer to <USER_QUERY> based strictly on <CONTEXT>. Do NOT dump raw context excerpts.""")
 
     user_text = "\n\n".join(user_parts)
 
