@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import { Message } from '../types';
 import { ragApi } from '../api/rag';
 import { SourceCitationPill } from './SourceCitationPill';
-import { Bot, Layers, RotateCcw, Send, Sparkles, User as UserIcon } from 'lucide-react';
+import { Bot, Check, ChevronDown, Layers, RotateCcw, Send, Sparkles, User as UserIcon } from 'lucide-react';
 
 interface ChatInterfaceProps {
   selectedDocId: string | null;
@@ -12,6 +12,37 @@ interface ChatInterfaceProps {
 }
 
 const STORAGE_KEY = 'rag_chat_history_v1';
+
+const MODE_OPTIONS = [
+  {
+    id: 'qa',
+    name: 'Question Answering',
+    badge: 'Factual & Grounded',
+    desc: 'Direct, synthesized answers with verified page citations and strict anti-hallucination grounding.',
+    icon: '💬',
+  },
+  {
+    id: 'summary',
+    name: 'Executive Summary',
+    badge: 'Leadership Brief',
+    desc: '3-tier structured brief: Executive Overview, Key Policies, and Deadlines & Numerical Requirements.',
+    icon: '📑',
+  },
+  {
+    id: 'extraction',
+    name: 'Entity Extraction',
+    badge: 'Structured Data',
+    desc: 'Extracts figures, dates, monetary amounts, and clauses into clean, machine-readable JSON format.',
+    icon: '📊',
+  },
+  {
+    id: 'comparison',
+    name: 'Cross Comparison',
+    badge: 'Multi-Doc Matrix',
+    desc: 'Side-by-side comparative analysis, change tracking, and contradiction detection across documents.',
+    icon: '⚖️',
+  },
+];
 
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({ selectedDocId, selectedDocTitle }) => {
   // Store persistent conversation histories partitioned by document id
@@ -27,12 +58,26 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ selectedDocId, sel
   const [input, setInput] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [mode, setMode] = useState<string>('qa');
+  const [isModeDropdownOpen, setIsModeDropdownOpen] = useState<boolean>(false);
   const [hybrid, setHybrid] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const modeDropdownRef = useRef<HTMLDivElement>(null);
 
   // Active key for the current conversation scope
   const activeKey = selectedDocId || 'all_docs';
   const currentMessages = chatHistoryByDoc[activeKey] || [];
+  const currentModeInfo = MODE_OPTIONS.find((m) => m.id === mode) || MODE_OPTIONS[0];
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (modeDropdownRef.current && !modeDropdownRef.current.contains(event.target as Node)) {
+        setIsModeDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Persist histories to localStorage whenever they update
   useEffect(() => {
@@ -150,7 +195,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ selectedDocId, sel
   return (
     <div className="flex-1 flex flex-col h-full bg-slate-950">
       {/* Header bar with Mode & Hybrid settings */}
-      <div className="h-14 border-b border-slate-800/80 px-6 flex items-center justify-between bg-slate-900/40">
+      <div className="h-16 border-b border-slate-800/80 px-6 flex items-center justify-between bg-slate-900/40 relative z-30">
         <div className="flex items-center space-x-2">
           <Sparkles className="h-4 w-4 text-brand-400" />
           <span className="text-xs font-medium text-slate-300">
@@ -159,30 +204,64 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ selectedDocId, sel
         </div>
 
         <div className="flex items-center space-x-3 text-xs">
-          {/* Mode Selector */}
-          <div className="flex items-center space-x-1.5 bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-lg">
-            <span className="text-slate-500">Mode:</span>
-            <select
-              value={mode}
-              onChange={(e) => setMode(e.target.value)}
-              className="bg-transparent text-slate-200 focus:outline-none cursor-pointer"
+          {/* Custom Mode Selector with Detailed Descriptions */}
+          <div className="relative" ref={modeDropdownRef}>
+            <button
+              onClick={() => setIsModeDropdownOpen(!isModeDropdownOpen)}
+              className="flex items-center space-x-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 px-3 py-1.5 rounded-xl text-slate-200 transition shadow-sm"
+              title="Change reasoning and formatting mode"
             >
-              <option value="qa">Question Answering</option>
-              <option value="summary">Executive Summary</option>
-              <option value="extraction">Entity Extraction</option>
-              <option value="comparison">Cross Comparison</option>
-            </select>
+              <span>{currentModeInfo.icon}</span>
+              <span className="font-medium">{currentModeInfo.name}</span>
+              <ChevronDown className={`h-3.5 w-3.5 text-slate-400 transition-transform ${isModeDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* Dropdown Menu with Definitions */}
+            {isModeDropdownOpen && (
+              <div className="absolute right-0 mt-2 w-80 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-2 animate-in fade-in zoom-in-95 duration-150 z-50 divide-y divide-slate-800/50">
+                <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                  Select AI Reasoning Mode
+                </div>
+                <div className="py-1 space-y-1">
+                  {MODE_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.id}
+                      onClick={() => {
+                        setMode(opt.id);
+                        setIsModeDropdownOpen(false);
+                      }}
+                      className={`w-full text-left p-2.5 rounded-xl transition flex items-start space-x-3 ${
+                        mode === opt.id
+                          ? 'bg-brand-500/15 border border-brand-500/30 text-white'
+                          : 'hover:bg-slate-800/60 text-slate-300'
+                      }`}
+                    >
+                      <span className="text-lg leading-none mt-0.5">{opt.icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-xs text-slate-100">{opt.name}</span>
+                          {mode === opt.id && <Check className="h-3.5 w-3.5 text-brand-400" />}
+                        </div>
+                        <p className="text-[11px] text-slate-400 leading-tight mt-1">
+                          {opt.desc}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Hybrid search toggle */}
           <button
             onClick={() => setHybrid(!hybrid)}
-            className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-lg border transition ${
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border transition ${
               hybrid
                 ? 'bg-brand-500/20 text-brand-300 border-brand-500/40'
                 : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
             }`}
-            title="Combine Dense Vectors with BM25 Lexical Keyword Search"
+            title="Combine Dense Semantic Vectors with Sparse BM25 Keyword Search (RRF)"
           >
             <Layers className="h-3.5 w-3.5" />
             <span>Hybrid Search</span>
@@ -192,7 +271,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ selectedDocId, sel
           {currentMessages.length > 0 && (
             <button
               onClick={handleClearHistory}
-              className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg border border-slate-800 bg-slate-900 text-slate-400 hover:text-rose-400 hover:border-rose-500/30 transition"
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border border-slate-800 bg-slate-900 text-slate-400 hover:text-rose-400 hover:border-rose-500/30 transition"
               title="Clear conversation for this document"
             >
               <RotateCcw className="h-3.5 w-3.5" />
@@ -212,9 +291,15 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ selectedDocId, sel
             <h3 className="text-base font-semibold text-slate-200 mb-1">
               {selectedDocTitle ? `Researching ${selectedDocTitle}` : 'How can I assist your document research?'}
             </h3>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Ask questions, generate summaries, or compare facts across documents. Every answer cites verified page numbers and text excerpts.
+            <p className="text-xs text-slate-400 leading-relaxed mb-3">
+              Ask questions, generate executive summaries, or extract structured data. Every answer cites verified page numbers and text excerpts.
             </p>
+            <div className="inline-flex items-center space-x-2 bg-slate-900/80 border border-slate-800 px-3 py-1.5 rounded-full text-[11px] text-slate-400">
+              <span>Active Mode:</span>
+              <span className="font-semibold text-brand-300">{currentModeInfo.name}</span>
+              <span>·</span>
+              <span>{currentModeInfo.badge}</span>
+            </div>
           </div>
         ) : (
           currentMessages.map((msg) => (
@@ -335,8 +420,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ selectedDocId, sel
             onChange={(e) => setInput(e.target.value)}
             placeholder={
               selectedDocTitle
-                ? `Ask about ${selectedDocTitle}...`
-                : "Ask a question across all documents..."
+                ? `Ask about ${selectedDocTitle} in ${currentModeInfo.name} mode...`
+                : `Ask across all documents in ${currentModeInfo.name} mode...`
             }
             disabled={loading}
             className="flex-1 bg-slate-900 border border-slate-800 focus:border-brand-500 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none transition shadow-inner"
