@@ -1,4 +1,4 @@
-import { apiClient } from './client';
+import { apiClient, API_BASE_URL } from './client';
 import { RAGQueryResponse, SourceCitation } from '../types';
 
 export interface StreamCallbacks {
@@ -35,7 +35,7 @@ export const ragApi = {
     hybrid: boolean = false
   ): Promise<void> => {
     const token = localStorage.getItem('token');
-    const response = await fetch('/api/rag/query/stream', {
+    const response = await fetch(`${API_BASE_URL}/rag/query/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
