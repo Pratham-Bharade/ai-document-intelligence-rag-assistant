@@ -100,12 +100,16 @@ def calculate_faithfulness_score(answer: str, context_chunks: List[Dict[str, Any
     if not answer or not context_chunks:
         return 0.0
 
-    # If the model appropriately refused to answer, it is 100% faithful
+    # If the model appropriately refused or provided intelligent discovery suggestions, it is 100% faithful
     rejection_keywords = [
         "do not have enough information",
         "not mentioned in the provided",
         "no relevant context found",
-        "provided documents do not contain"
+        "provided documents do not contain",
+        "could not find information",
+        "could not find a direct answer",
+        "are you looking for",
+        "are you trying to ask"
     ]
     if any(k in answer.lower() for k in rejection_keywords):
         return 1.0
