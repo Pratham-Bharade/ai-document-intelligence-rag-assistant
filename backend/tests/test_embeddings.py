@@ -62,7 +62,7 @@ def test_embed_api_failure():
         # Simulate a network timeout or authentication error
         mock_instance.embed_documents.side_effect = Exception("API Timeout")
         
-        embedder = DocumentEmbedder(api_key="test_key")
+        embedder = DocumentEmbedder(api_key="test_key", fallback_to_local=False)
         chunks = [{"text": "Hello world"}]
         
         with pytest.raises(EmbeddingServiceError, match="API Timeout"):
@@ -75,7 +75,7 @@ def test_dimension_validation():
         # Simulate returning a 768-dimensional vector instead of 1536
         mock_instance.embed_documents.return_value = [[0.1] * 768]
         
-        embedder = DocumentEmbedder(api_key="test_key")
+        embedder = DocumentEmbedder(api_key="test_key", fallback_to_local=False)
         chunks = [{"text": "Wrong dimensions"}]
         
         with pytest.raises(EmbeddingServiceError, match="Dimension mismatch"):
