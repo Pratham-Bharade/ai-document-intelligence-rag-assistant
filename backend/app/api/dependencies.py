@@ -18,15 +18,52 @@ from app.rag.pipeline import RAGPipeline
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
+import logging
+import os
+
+logger = logging.getLogger(__name__)
+
 # Global RAG Pipeline Singleton
 _pipeline_instance: Optional[RAGPipeline] = None
 
 
+def _rehydrate_pipeline_from_db(pipeline: RAGPipeline) -> None:
+    """Restores all processed documents and vector embeddings from disk on server startup."""
+    from app.db.session import SessionLocal
+    from app.models.document import Document
+
+    db = SessionLocal()
+    try:
+        docs = db.query(Document).filter(Document.status == "processed").all()
+        for doc in docs:
+            if doc.file_path and os.path.exists(doc.file_path):
+                # Verify not already loaded
+                already_loaded = any(
+                    c.get("metadata", {}).get("document_id") == doc.id
+                    for c in pipeline.vector_store.chunks
+                )
+                if not already_loaded:
+                    try:
+                        logger.info(f"Rehydrating knowledge base document: {doc.title} ({doc.id})")
+                        pipeline.ingest_pdf(
+                            file_path=doc.file_path,
+                            document_id=doc.id,
+                            custom_metadata={"title": doc.title, "filename": doc.filename}
+                        )
+                    except Exception as e:
+                        logger.warning(f"Could not rehydrate document {doc.id}: {e}")
+    except Exception as e:
+        logger.warning(f"Database rehydration failed: {e}")
+    finally:
+        db.close()
+
+
 def get_rag_pipeline() -> RAGPipeline:
-    """Provides a shared RAGPipeline instance."""
+    """Provides a shared RAGPipeline instance, automatically rehydrating on startup."""
     global _pipeline_instance
     if _pipeline_instance is None:
         _pipeline_instance = RAGPipeline()
+        _rehydrate_pipeline_from_db(_pipeline_instance)
     return _pipeline_instance
 
 
