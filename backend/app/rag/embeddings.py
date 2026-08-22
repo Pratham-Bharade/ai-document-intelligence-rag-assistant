@@ -14,9 +14,11 @@ Main responsibilities:
 """
 
 import logging
-from typing import Any, Dict, List
+import os
+from typing import Any, Dict, List, Optional
 
 from langchain_openai import OpenAIEmbeddings
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +28,7 @@ class EmbeddingServiceError(Exception):
 
 
 class DocumentEmbedder:
-    def __init__(self, api_key: str = "dummy_key"):
+    def __init__(self, api_key: Optional[str] = None):
         """
         Initializes the embedding service.
         We default to 'text-embedding-3-small' because it provides excellent
@@ -35,12 +37,14 @@ class DocumentEmbedder:
         self.model_name = "text-embedding-3-small"
         self.expected_dimensions = 1536
         
+        effective_key = api_key or settings.openai_api_key or os.environ.get("OPENAI_API_KEY", "dummy_key")
+        
         try:
             # LangChain's OpenAI wrapper automatically handles exponential backoff 
             # retries internally via the 'tenacity' library. We set max_retries=3.
             self.embeddings_client = OpenAIEmbeddings(
                 model=self.model_name,
-                api_key=api_key,
+                api_key=effective_key,
                 max_retries=3,
                 timeout=30.0
             )

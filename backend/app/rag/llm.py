@@ -14,7 +14,10 @@ Main responsibilities:
 """
 
 import logging
+import os
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
+
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -94,8 +97,16 @@ class LLMService:
         openai_model: str = "gpt-4o-mini",
         temperature: float = 0.1
     ):
-        self.groq_api_key = groq_api_key
-        self.openai_api_key = openai_api_key
+        if groq_api_key is None:
+            self.groq_api_key = settings.groq_api_key or os.environ.get("GROQ_API_KEY")
+        else:
+            self.groq_api_key = groq_api_key
+
+        if openai_api_key is None:
+            self.openai_api_key = settings.openai_api_key or os.environ.get("OPENAI_API_KEY")
+        else:
+            self.openai_api_key = openai_api_key
+
         self.groq_model = groq_model
         self.openai_model = openai_model
         self.temperature = temperature

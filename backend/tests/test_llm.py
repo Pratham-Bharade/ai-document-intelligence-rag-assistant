@@ -109,6 +109,6 @@ def test_llm_stream_generate():
 
 def test_llm_service_no_providers():
     """Test error when no API keys are provided."""
-    service = LLMService()
+    service = LLMService(groq_api_key="", openai_api_key="")
     with pytest.raises(LLMServiceError, match="No LLM providers configured"):
         service.generate(messages=[{"role": "user", "content": "Hi"}])

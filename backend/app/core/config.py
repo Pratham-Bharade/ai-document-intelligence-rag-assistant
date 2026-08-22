@@ -67,6 +67,8 @@ class Settings(BaseSettings):
     # =========================================================================
     # LLM CONFIGURATION
     # =========================================================================
+    groq_api_key: str = ""
+    openai_api_key: str = ""
     llm_provider: str = "groq"
     llm_api_key: str = ""
     llm_model_name: str = "llama-3.3-70b-versatile"
@@ -75,7 +77,7 @@ class Settings(BaseSettings):
     # =========================================================================
     # EMBEDDING CONFIGURATION
     # =========================================================================
-    embedding_provider: Literal["local", "openai"] = "local"
+    embedding_provider: Literal["local", "openai"] = "openai"
     # Local model: fast, free, runs on CPU, 384 dimensions
     embedding_model_name: str = "all-MiniLM-L6-v2"
     # OpenAI embedding model (only used when embedding_provider="openai")
