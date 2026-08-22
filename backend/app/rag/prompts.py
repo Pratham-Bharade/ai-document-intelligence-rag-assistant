@@ -103,7 +103,8 @@ def format_context_block(context_chunks: List[Dict[str, Any]]) -> str:
     for i, chunk in enumerate(context_chunks, start=1):
         page = f" (Page {chunk.get('page_number')})" if chunk.get("page_number") else ""
         meta = chunk.get("metadata", {})
-        doc = f" [Doc: {meta.get('document_id')}]" if meta.get("document_id") else ""
+        doc_title = meta.get("title") or meta.get("filename") or meta.get("document_id")
+        doc = f" [Doc: {doc_title}]" if doc_title else ""
         text = chunk.get("text", "").strip()
         parts.append(f"--- Excerpt {i}{doc}{page} ---\n{text}")
         

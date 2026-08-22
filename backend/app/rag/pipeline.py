@@ -110,9 +110,9 @@ class RAGPipeline:
                 "status": "empty"
             }
 
-        # Inject document_id into each chunk's metadata
+        # Inject complete document metadata (title, filename, document_id) into each chunk
         for chunk in chunks:
-            chunk["metadata"]["document_id"] = doc_id
+            chunk["metadata"] = meta.copy()
 
         # Step 5: Embedding
         embedded_chunks = self.embedder.embed_chunks(chunks, batch_size=100)

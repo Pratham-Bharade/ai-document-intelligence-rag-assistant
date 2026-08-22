@@ -49,19 +49,19 @@ class RAGQueryResponse(BaseModel):
 def _get_document_metadata_context(db: Session, document_id: Optional[str], user_id: str) -> Optional[str]:
     """Extracts structural metadata (total pages, title, file name) for RAG context."""
     if document_id:
-        doc = db.query(Document).filter(Document.id == document_id).first()
+        doc = db.query(Document).filter(Document.id == document_id, Document.user_id == user_id).first()
         if doc:
             return (
-                f"Document Title: {doc.title or doc.filename}\n"
+                f"Selected Active Document: {doc.title or doc.filename}\n"
                 f"Total Pages: {doc.total_pages}\n"
                 f"Document ID: {doc.id}\n"
                 f"File Size: {doc.file_size} bytes"
             )
     else:
-        user_docs = db.query(Document).filter(Document.user_id == user_id).all()
+        user_docs = db.query(Document).filter(Document.user_id == user_id).order_by(Document.created_at.desc()).all()
         if user_docs:
-            doc_lines = [f"- {d.title or d.filename}: {d.total_pages} pages (ID: {d.id})" for d in user_docs]
-            return "Available Knowledge Base Documents:\n" + "\n".join(doc_lines)
+            doc_lines = [f"- {d.title or d.filename} ({d.total_pages} pages, ID: {d.id})" for d in user_docs]
+            return "All Ingested Knowledge Base Documents:\n" + "\n".join(doc_lines)
     return None
 
 
