@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Message } from '../types';
 import { ragApi } from '../api/rag';
 import { SourceCitationPill } from './SourceCitationPill';
@@ -229,17 +231,78 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ selectedDocId, sel
               )}
 
               <div
-                className={`max-w-2xl rounded-2xl p-4 text-sm leading-relaxed shadow-sm ${
+                className={`max-w-3xl rounded-2xl p-5 leading-relaxed shadow-sm ${
                   msg.role === 'user'
-                    ? 'bg-brand-600 text-white rounded-tr-none'
-                    : 'bg-slate-900 border border-slate-800 text-slate-200 rounded-tl-none'
+                    ? 'bg-brand-600 text-white rounded-tr-none text-sm'
+                    : 'bg-slate-900 border border-slate-800 text-slate-100 rounded-tl-none text-sm'
                 }`}
               >
-                <p className="whitespace-pre-wrap">{msg.content}</p>
+                {msg.role === 'user' ? (
+                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                ) : (
+                  <div className="markdown-content">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        h1: ({ node, ...props }) => (
+                          <h1 className="text-xl font-extrabold text-slate-100 mt-4 mb-2 pb-1 border-b border-slate-800" {...props} />
+                        ),
+                        h2: ({ node, ...props }) => (
+                          <h2 className="text-lg font-bold text-brand-300 mt-3 mb-2" {...props} />
+                        ),
+                        h3: ({ node, ...props }) => (
+                          <h3 className="text-base font-semibold text-slate-200 mt-2 mb-1" {...props} />
+                        ),
+                        p: ({ node, ...props }) => (
+                          <p className="text-sm text-slate-200 leading-relaxed mb-2.5 last:mb-0" {...props} />
+                        ),
+                        ul: ({ node, ...props }) => (
+                          <ul className="list-disc list-outside ml-4 space-y-1.5 my-2.5 text-sm text-slate-200" {...props} />
+                        ),
+                        ol: ({ node, ...props }) => (
+                          <ol className="list-decimal list-outside ml-4 space-y-1.5 my-2.5 text-sm text-slate-200" {...props} />
+                        ),
+                        li: ({ node, ...props }) => (
+                          <li className="leading-relaxed pl-1" {...props} />
+                        ),
+                        strong: ({ node, ...props }) => (
+                          <strong className="font-bold text-brand-300" {...props} />
+                        ),
+                        em: ({ node, ...props }) => (
+                          <em className="italic text-slate-300" {...props} />
+                        ),
+                        blockquote: ({ node, ...props }) => (
+                          <blockquote className="border-l-4 border-brand-500/70 pl-3 py-1 my-2.5 text-slate-300 italic bg-brand-500/5 rounded-r" {...props} />
+                        ),
+                        code: ({ node, className, children, ...props }) => (
+                          <code className="bg-slate-950 px-1.5 py-0.5 rounded text-brand-300 text-xs font-mono border border-slate-800" {...props}>
+                            {children}
+                          </code>
+                        ),
+                        table: ({ node, ...props }) => (
+                          <div className="overflow-x-auto my-3 rounded-lg border border-slate-800">
+                            <table className="min-w-full text-xs text-left" {...props} />
+                          </div>
+                        ),
+                        th: ({ node, ...props }) => (
+                          <th className="bg-slate-800/90 px-3 py-2 font-semibold text-slate-200 border-b border-slate-700" {...props} />
+                        ),
+                        td: ({ node, ...props }) => (
+                          <td className="px-3 py-2 border-b border-slate-800/60 text-slate-300" {...props} />
+                        ),
+                        hr: ({ node, ...props }) => (
+                          <hr className="my-3.5 border-slate-800" {...props} />
+                        ),
+                      }}
+                    >
+                      {msg.content}
+                    </ReactMarkdown>
+                  </div>
+                )}
 
                 {/* Render source citations under assistant message */}
                 {msg.role === 'assistant' && msg.sources_json && msg.sources_json.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-slate-800/80">
+                  <div className="mt-4 pt-3 border-t border-slate-800/80">
                     <span className="text-[11px] font-medium text-slate-400 block mb-1.5">
                       Grounding Sources ({msg.sources_json.length}):
                     </span>
