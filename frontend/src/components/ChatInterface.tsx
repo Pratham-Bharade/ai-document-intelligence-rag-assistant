@@ -9,18 +9,37 @@ interface ChatInterfaceProps {
   selectedDocTitle?: string;
 }
 
+const STORAGE_KEY = 'rag_chat_history_v1';
+
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({ selectedDocId, selectedDocTitle }) => {
-  const [messages, setMessages] = useState<Message[]>([]);
+  // Store persistent conversation histories partitioned by document id
+  const [chatHistoryByDoc, setChatHistoryByDoc] = useState<Record<string, Message[]>>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
   const [input, setInput] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [mode, setMode] = useState<string>('qa');
   const [hybrid, setHybrid] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Automatically clear conversation history when switching documents
+  // Active key for the current conversation scope
+  const activeKey = selectedDocId || 'all_docs';
+  const currentMessages = chatHistoryByDoc[activeKey] || [];
+
+  // Persist histories to localStorage whenever they update
   useEffect(() => {
-    setMessages([]);
-  }, [selectedDocId]);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(chatHistoryByDoc));
+    } catch (err) {
+      console.warn('Failed to persist chat history:', err);
+    }
+  }, [chatHistoryByDoc]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -28,7 +47,14 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ selectedDocId, sel
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, loading]);
+  }, [currentMessages, loading, selectedDocId]);
+
+  const handleClearHistory = () => {
+    setChatHistoryByDoc((prev) => ({
+      ...prev,
+      [activeKey]: [],
+    }));
+  };
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,10 +63,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ selectedDocId, sel
     const userQuestion = input.trim();
     setInput('');
 
-    // Add user message
+    // Create user message
     const userMsg: Message = {
       id: Date.now().toString(),
-      conversation_id: 'active',
+      conversation_id: activeKey,
       role: 'user',
       content: userQuestion,
       created_at: new Date().toISOString(),
@@ -50,16 +76,19 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ selectedDocId, sel
     const assistantMsgId = (Date.now() + 1).toString();
     const initialAssistantMsg: Message = {
       id: assistantMsgId,
-      conversation_id: 'active',
+      conversation_id: activeKey,
       role: 'assistant',
       content: '',
       sources_json: [],
       created_at: new Date().toISOString(),
     };
 
-    setMessages((prev) => [...prev, userMsg, initialAssistantMsg]);
-    setLoading(true);
+    setChatHistoryByDoc((prev) => ({
+      ...prev,
+      [activeKey]: [...(prev[activeKey] || []), userMsg, initialAssistantMsg],
+    }));
 
+    setLoading(true);
     let accumulatedContent = '';
 
     try {
@@ -67,31 +96,34 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ selectedDocId, sel
         userQuestion,
         {
           onSources: (incomingSources) => {
-            setMessages((prev) =>
-              prev.map((msg) =>
+            setChatHistoryByDoc((prev) => ({
+              ...prev,
+              [activeKey]: (prev[activeKey] || []).map((msg) =>
                 msg.id === assistantMsgId ? { ...msg, sources_json: incomingSources } : msg
-              )
-            );
+              ),
+            }));
           },
           onToken: (token) => {
             accumulatedContent += token;
-            setMessages((prev) =>
-              prev.map((msg) =>
+            setChatHistoryByDoc((prev) => ({
+              ...prev,
+              [activeKey]: (prev[activeKey] || []).map((msg) =>
                 msg.id === assistantMsgId ? { ...msg, content: accumulatedContent } : msg
-              )
-            );
+              ),
+            }));
           },
           onDone: () => {
             setLoading(false);
           },
           onError: (err) => {
-            setMessages((prev) =>
-              prev.map((msg) =>
+            setChatHistoryByDoc((prev) => ({
+              ...prev,
+              [activeKey]: (prev[activeKey] || []).map((msg) =>
                 msg.id === assistantMsgId
                   ? { ...msg, content: `Error: ${err}` }
                   : msg
-              )
-            );
+              ),
+            }));
             setLoading(false);
           },
         },
@@ -101,13 +133,14 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ selectedDocId, sel
         hybrid
       );
     } catch (err: any) {
-      setMessages((prev) =>
-        prev.map((msg) =>
+      setChatHistoryByDoc((prev) => ({
+        ...prev,
+        [activeKey]: (prev[activeKey] || []).map((msg) =>
           msg.id === assistantMsgId
             ? { ...msg, content: `Failed to stream answer: ${err.message}` }
             : msg
-        )
-      );
+        ),
+      }));
       setLoading(false);
     }
   };
@@ -153,12 +186,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ selectedDocId, sel
             <span>Hybrid Search</span>
           </button>
 
-          {/* Clear Chat Button */}
-          {messages.length > 0 && (
+          {/* Clear Chat Button for current document */}
+          {currentMessages.length > 0 && (
             <button
-              onClick={() => setMessages([])}
+              onClick={handleClearHistory}
               className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg border border-slate-800 bg-slate-900 text-slate-400 hover:text-rose-400 hover:border-rose-500/30 transition"
-              title="Clear conversation history"
+              title="Clear conversation for this document"
             >
               <RotateCcw className="h-3.5 w-3.5" />
               <span>Clear</span>
@@ -169,18 +202,20 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ selectedDocId, sel
 
       {/* Message History */}
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
-        {messages.length === 0 ? (
+        {currentMessages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto">
             <div className="h-12 w-12 rounded-2xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center text-brand-400 mb-4 shadow-lg shadow-brand-500/5">
               <Bot className="h-6 w-6" />
             </div>
-            <h3 className="text-base font-semibold text-slate-200 mb-1">How can I assist your document research?</h3>
+            <h3 className="text-base font-semibold text-slate-200 mb-1">
+              {selectedDocTitle ? `Researching ${selectedDocTitle}` : 'How can I assist your document research?'}
+            </h3>
             <p className="text-xs text-slate-400 leading-relaxed">
-              Ask detailed questions about policies, financial reports, or technical specifications. Responses will cite verified page numbers and excerpts.
+              Ask questions, generate summaries, or compare facts across documents. Every answer cites verified page numbers and text excerpts.
             </p>
           </div>
         ) : (
-          messages.map((msg) => (
+          currentMessages.map((msg) => (
             <div
               key={msg.id}
               className={`flex items-start space-x-3 ${
@@ -235,7 +270,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ selectedDocId, sel
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask a question about your documents (e.g. 'What is the PTO rollover policy?')..."
+            placeholder={
+              selectedDocTitle
+                ? `Ask about ${selectedDocTitle}...`
+                : "Ask a question across all documents..."
+            }
             disabled={loading}
             className="flex-1 bg-slate-900 border border-slate-800 focus:border-brand-500 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none transition shadow-inner"
           />
