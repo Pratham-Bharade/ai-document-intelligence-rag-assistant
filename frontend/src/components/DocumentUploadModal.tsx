@@ -9,6 +9,8 @@ interface DocumentUploadModalProps {
   onSuccess: (doc: Document) => void;
 }
 
+const ALLOWED_EXTS = ['.pdf', '.docx', '.doc', '.txt', '.md', '.csv', '.xlsx', '.pptx'];
+
 export const DocumentUploadModal: React.FC<DocumentUploadModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState<string>('');
@@ -20,17 +22,22 @@ export const DocumentUploadModal: React.FC<DocumentUploadModalProps> = ({ isOpen
 
   if (!isOpen) return null;
 
+  const validateFileExt = (filename: string): boolean => {
+    const ext = filename.slice(filename.lastIndexOf('.')).toLowerCase();
+    return ALLOWED_EXTS.includes(ext);
+  };
+
   const handleFileDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const selected = e.dataTransfer.files[0];
-      if (selected.type === 'application/pdf' || selected.name.endsWith('.pdf')) {
+      if (validateFileExt(selected.name)) {
         setFile(selected);
         if (!title) setTitle(selected.name.replace(/\.[^/.]+$/, ''));
         setError(null);
       } else {
-        setError('Only PDF documents are supported.');
+        setError(`Unsupported format. Allowed: ${ALLOWED_EXTS.join(', ')}`);
       }
     }
   };
@@ -38,12 +45,12 @@ export const DocumentUploadModal: React.FC<DocumentUploadModalProps> = ({ isOpen
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selected = e.target.files[0];
-      if (selected.type === 'application/pdf' || selected.name.endsWith('.pdf')) {
+      if (validateFileExt(selected.name)) {
         setFile(selected);
         if (!title) setTitle(selected.name.replace(/\.[^/.]+$/, ''));
         setError(null);
       } else {
-        setError('Only PDF documents are supported.');
+        setError(`Unsupported format. Allowed: ${ALLOWED_EXTS.join(', ')}`);
       }
     }
   };
@@ -51,7 +58,7 @@ export const DocumentUploadModal: React.FC<DocumentUploadModalProps> = ({ isOpen
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file) {
-      setError('Please select a PDF file.');
+      setError('Please select a document file.');
       return;
     }
 
@@ -116,7 +123,7 @@ export const DocumentUploadModal: React.FC<DocumentUploadModalProps> = ({ isOpen
             <input
               ref={fileInputRef}
               type="file"
-              accept=".pdf"
+              accept=".pdf,.docx,.doc,.txt,.md,.csv,.xlsx,.pptx"
               onChange={handleFileSelect}
               className="hidden"
             />
@@ -129,8 +136,8 @@ export const DocumentUploadModal: React.FC<DocumentUploadModalProps> = ({ isOpen
             ) : (
               <div className="flex flex-col items-center space-y-2 text-slate-400">
                 <UploadCloud className="h-10 w-10 text-brand-400 animate-pulse" />
-                <span className="text-sm font-medium text-slate-200">Drag & drop your PDF here</span>
-                <span className="text-xs text-slate-500">or click to browse files (max 50MB)</span>
+                <span className="text-sm font-medium text-slate-200">Drag & drop your document here</span>
+                <span className="text-xs text-slate-500">PDF, Word (.docx), Markdown (.md), Text (.txt), CSV, PPTX</span>
               </div>
             )}
           </div>
@@ -141,20 +148,20 @@ export const DocumentUploadModal: React.FC<DocumentUploadModalProps> = ({ isOpen
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Employee Benefits Handbook 2026"
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-brand-500 transition"
+              placeholder="e.g. Q4 Financial Report 2026"
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-brand-500 transition"
             />
           </div>
 
           {uploading && (
-            <div className="space-y-2">
+            <div className="space-y-2 pt-2">
               <div className="flex justify-between text-xs text-slate-400">
-                <span>Ingesting and Vectorizing Document...</span>
+                <span>Extracting text & generating vector embeddings...</span>
                 <span>{progress}%</span>
               </div>
-              <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+              <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
                 <div
-                  className="bg-brand-500 h-full transition-all duration-300 rounded-full"
+                  className="bg-brand-500 h-1.5 rounded-full transition-all duration-300"
                   style={{ width: `${progress}%` }}
                 />
               </div>
@@ -166,17 +173,23 @@ export const DocumentUploadModal: React.FC<DocumentUploadModalProps> = ({ isOpen
               type="button"
               onClick={onClose}
               disabled={uploading}
-              className="px-4 py-2 text-sm text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition"
+              className="px-4 py-2 text-xs font-medium text-slate-400 hover:text-white transition"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={!file || uploading}
-              className="px-5 py-2 text-sm font-medium bg-brand-600 hover:bg-brand-500 disabled:opacity-50 text-white rounded-xl flex items-center space-x-2 transition shadow-lg shadow-brand-600/20"
+              className="px-5 py-2 bg-brand-600 hover:bg-brand-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center space-x-2 transition shadow-md shadow-brand-500/20"
             >
-              {uploading && <Loader2 className="h-4 w-4 animate-spin" />}
-              <span>{uploading ? 'Processing...' : 'Upload & Ingest'}</span>
+              {uploading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Processing...</span>
+                </>
+              ) : (
+                <span>Upload & Ingest</span>
+              )}
             </button>
           </div>
         </form>

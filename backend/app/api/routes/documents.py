@@ -30,6 +30,9 @@ from app.workers.tasks import background_ingest_document
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
 
+SUPPORTED_EXTS = {".pdf", ".docx", ".doc", ".txt", ".md", ".csv", ".xlsx", ".pptx"}
+
+
 @router.post("/upload", response_model=DocumentRead, status_code=status.HTTP_201_CREATED)
 async def upload_document(
     file: UploadFile = File(...),
@@ -39,12 +42,13 @@ async def upload_document(
     pipeline: RAGPipeline = Depends(get_rag_pipeline)
 ) -> Any:
     """
-    Synchronously uploads a PDF document, streams it to disk, and runs RAG ingestion.
+    Synchronously uploads a document (PDF, Word, TXT, CSV, PPTX), streams to disk, and runs RAG ingestion.
     """
-    if not file.filename.lower().endswith(".pdf"):
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in SUPPORTED_EXTS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only PDF files are currently supported."
+            detail=f"Unsupported format '{ext}'. Supported formats: {', '.join(sorted(SUPPORTED_EXTS))}"
         )
 
     doc_title = title or file.filename.rsplit(".", 1)[0]
@@ -62,7 +66,7 @@ async def upload_document(
             filename=file.filename,
             file_path=dest_path,
             file_size=file_size,
-            mime_type=file.content_type or "application/pdf"
+            mime_type=file.content_type or "application/octet-stream"
         )
 
         doc = process_document_ingestion(db, pipeline, doc.id)
@@ -84,14 +88,13 @@ async def upload_document_async(
     pipeline: RAGPipeline = Depends(get_rag_pipeline)
 ) -> Dict[str, Any]:
     """
-    Asynchronously uploads a PDF document, saves it to disk, and dispatches
-    the heavy OCR and embedding ingestion task to the background task queue.
-    Returns HTTP 202 Accepted with a task_id for progress polling.
+    Asynchronously uploads a document, saves to disk, and dispatches ingestion to background queue.
     """
-    if not file.filename.lower().endswith(".pdf"):
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in SUPPORTED_EXTS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only PDF files are currently supported."
+            detail=f"Unsupported format '{ext}'. Supported formats: {', '.join(sorted(SUPPORTED_EXTS))}"
         )
 
     doc_title = title or file.filename.rsplit(".", 1)[0]

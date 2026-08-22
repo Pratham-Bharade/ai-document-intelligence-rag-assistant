@@ -27,7 +27,12 @@ from app.core.telemetry import (
 from app.rag.embeddings import DocumentEmbedder
 from app.rag.guardrails import SecurityGuardrails
 from app.rag.llm import LLMService
-from app.rag.loader import extract_text_from_pdf, validate_pdf
+from app.rag.loader import (
+    extract_text_from_document,
+    extract_text_from_pdf,
+    validate_document,
+    validate_pdf
+)
 from app.rag.preprocessing import preprocess_document
 from app.rag.prompts import PromptMode, build_rag_messages
 from app.rag.retriever import AdvancedRetriever
@@ -38,24 +43,26 @@ logger = logging.getLogger(__name__)
 
 
 class RAGPipelineError(Exception):
-    """Custom exception for pipeline orchestration errors."""
+    """Custom exception for all RAG pipeline execution errors."""
     pass
 
 
 class RAGPipeline:
     """
-    End-to-End RAG Pipeline Orchestrator.
+    Unified RAG Orchestrator managing document ingestion, chunking,
+    embedding, semantic search, hybrid retrieval, and LLM synthesis.
     """
     def __init__(
         self,
         embedder: Optional[DocumentEmbedder] = None,
         vector_store: Optional[InMemoryVectorStore] = None,
+        retriever: Optional[AdvancedRetriever] = None,
         llm_service: Optional[LLMService] = None,
         guardrails: Optional[SecurityGuardrails] = None
     ):
         self.embedder = embedder or DocumentEmbedder()
-        self.vector_store = vector_store or InMemoryVectorStore(expected_dim=1536)
-        self.retriever = AdvancedRetriever(
+        self.vector_store = vector_store or InMemoryVectorStore()
+        self.retriever = retriever or AdvancedRetriever(
             vector_store=self.vector_store,
             embedder=self.embedder
         )
@@ -69,10 +76,10 @@ class RAGPipeline:
         custom_metadata: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Executes the full ingestion pipeline on a single PDF file.
+        Executes the full ingestion pipeline on a single document file (PDF, Word, TXT, CSV, PPTX).
         
         Lifecycle:
-          1. Validate PDF file size & MIME type
+          1. Validate file size & format
           2. Extract text and page numbers
           3. Preprocess and normalize text
           4. Split into recursive overlapping chunks
@@ -83,17 +90,17 @@ class RAGPipeline:
           Ingestion report dict (document_id, total_pages, total_chunks)
         """
         doc_id = document_id or str(uuid.uuid4())
-        meta = custom_metadata or {}
+        meta = (custom_metadata or {}).copy()
         meta["document_id"] = doc_id
         meta["source_path"] = file_path
 
         logger.info(f"Starting ingestion for document {doc_id} from {file_path}...")
 
         # Step 1: Validation
-        validate_pdf(file_path)
+        validate_document(file_path)
 
         # Step 2: Extraction
-        extracted_data = extract_text_from_pdf(file_path)
+        extracted_data = extract_text_from_document(file_path)
         extracted_data["metadata"].update(meta)
 
         # Step 3: Preprocessing
