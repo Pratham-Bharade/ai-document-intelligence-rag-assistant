@@ -6,11 +6,6 @@ Why it exists: LLMs generate the final answers in RAG. To achieve production rel
                with automatic fallback to OpenAI (GPT-4o) if rate limits or outages occur.
                We also support async token streaming for real-time UI typewriter effects.
 Dependencies: groq, openai, pydantic, typing
-Main responsibilities:
-  - Format structured RAG context prompts with strict source citation rules.
-  - Generate non-streaming answers.
-  - Stream token-by-token responses using Python async generators.
-  - Provide automated provider failover (Groq -> OpenAI).
 """
 
 import logging
@@ -21,6 +16,13 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+GROQ_FALLBACK_MODELS = [
+    "openai/gpt-oss-120b",
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "qwen/qwen3.6-27b",
+    "llama3-70b-8192"
+]
 
 # Standard Enterprise RAG System Prompt
 DEFAULT_SYSTEM_PROMPT = """You are an accurate, helpful AI Document Intelligence Assistant.
@@ -41,16 +43,7 @@ def format_rag_prompt(
 ) -> List[Dict[str, str]]:
     """
     Constructs Chat Completion messages (system + user) injecting retrieved context.
-    
-    Args:
-        query: User's question.
-        context_chunks: List of retrieved chunk dictionaries from Phase 8.
-        system_prompt: Base system instructions.
-        
-    Returns:
-        List of message dicts formatted for OpenAI / Groq chat APIs.
     """
-    # Build formatted context block
     if not context_chunks:
         formatted_context = "No relevant context found."
     else:
@@ -93,7 +86,7 @@ class LLMService:
         self,
         groq_api_key: Optional[str] = None,
         openai_api_key: Optional[str] = None,
-        groq_model: str = "llama-3.3-70b-versatile",
+        groq_model: str = "openai/gpt-oss-120b",
         openai_model: str = "gpt-4o-mini",
         temperature: float = 0.1
     ):
@@ -136,30 +129,33 @@ class LLMService:
     ) -> Dict[str, Any]:
         """
         Generates a non-streaming completion with automatic fallback.
-        
-        Returns:
-            Dict containing: 'content', 'provider', 'model', 'finish_reason'
         """
         # Try Groq first
         if (force_provider == "groq" or force_provider is None) and self._groq_client:
-            try:
-                response = self._groq_client.chat.completions.create(
-                    model=self.groq_model,
-                    messages=messages,
-                    temperature=self.temperature,
-                    max_tokens=max_tokens
-                )
-                choice = response.choices[0]
-                return {
-                    "content": choice.message.content or "",
-                    "provider": "groq",
-                    "model": self.groq_model,
-                    "finish_reason": choice.finish_reason
-                }
-            except Exception as e:
-                logger.error(f"Groq API call failed: {e}. Attempting fallback...")
-                if force_provider == "groq":
-                    raise LLMServiceError(f"Groq generation failed: {e}")
+            models_to_try = [self.groq_model] + [m for m in GROQ_FALLBACK_MODELS if m != self.groq_model]
+            for model_name in models_to_try:
+                try:
+                    response = self._groq_client.chat.completions.create(
+                        model=model_name,
+                        messages=messages,
+                        temperature=self.temperature,
+                        max_tokens=max_tokens
+                    )
+                    choice = response.choices[0]
+                    self.groq_model = model_name  # Save working model
+                    return {
+                        "content": choice.message.content or "",
+                        "provider": "groq",
+                        "model": model_name,
+                        "finish_reason": choice.finish_reason
+                    }
+                except Exception as e:
+                    if "model_not_found" in str(e) or "404" in str(e):
+                        continue
+                    logger.warning(f"Groq generation attempt failed ({e}). Trying next fallback...")
+
+            if force_provider == "groq":
+                raise LLMServiceError("All configured Groq models failed.")
 
         # Fallback to OpenAI
         if self._openai_client:
@@ -191,24 +187,45 @@ class LLMService:
         """
         Synchronous generator yielding text chunks as they arrive from the API.
         """
-        client = self._groq_client or self._openai_client
-        model = self.groq_model if self._groq_client else self.openai_model
+        if self._groq_client:
+            models_to_try = [self.groq_model] + [m for m in GROQ_FALLBACK_MODELS if m != self.groq_model]
+            for model_name in models_to_try:
+                try:
+                    stream = self._groq_client.chat.completions.create(
+                        model=model_name,
+                        messages=messages,
+                        temperature=self.temperature,
+                        max_tokens=max_tokens,
+                        stream=True
+                    )
+                    for chunk in stream:
+                        delta = chunk.choices[0].delta.content if chunk.choices else ""
+                        if delta:
+                            yield delta
+                    self.groq_model = model_name
+                    return
+                except Exception as e:
+                    if "model_not_found" in str(e) or "404" in str(e):
+                        continue
+                    logger.warning(f"Groq streaming with {model_name} failed ({e}). Trying fallback...")
 
-        if not client:
-            raise LLMServiceError("No active LLM client for streaming.")
+        # Fallback to OpenAI streaming
+        if self._openai_client:
+            try:
+                stream = self._openai_client.chat.completions.create(
+                    model=self.openai_model,
+                    messages=messages,
+                    temperature=self.temperature,
+                    max_tokens=max_tokens,
+                    stream=True
+                )
+                for chunk in stream:
+                    delta = chunk.choices[0].delta.content if chunk.choices else ""
+                    if delta:
+                        yield delta
+                return
+            except Exception as e:
+                logger.error(f"OpenAI stream generation failed: {e}")
+                raise LLMServiceError(f"Streaming failed: {e}")
 
-        try:
-            stream = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=self.temperature,
-                max_tokens=max_tokens,
-                stream=True
-            )
-            for chunk in stream:
-                delta = chunk.choices[0].delta.content if chunk.choices else None
-                if delta:
-                    yield delta
-        except Exception as e:
-            logger.error(f"Streaming failed: {e}")
-            raise LLMServiceError(f"Stream generation failed: {e}")
+        raise LLMServiceError("No active LLM client available for streaming.")
